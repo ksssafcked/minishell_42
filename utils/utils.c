@@ -106,7 +106,10 @@ void		*ft_realloc(void *ptr, size_t size)
 	if (!size)
 		return (ptr);
 	new_ptr = malloc(size);
+	if (!new_ptr)
+		return (NULL);
 	ft_memcpy(new_ptr, ptr, size);
+	free(ptr);
 	return (new_ptr);
 }
 
@@ -177,4 +180,72 @@ char	*ft_strnstr(const char *big, const char *little, unsigned int len)
 		big++;
 	}
 	return (0);
+}
+
+int	ft_isalnum(int c)
+{
+	if ((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122))
+		return (1);
+	else
+		return (0);
+}
+
+void	ft_bzero(void *dst, size_t n)
+{
+	unsigned char	*zero;
+	size_t			i;
+
+	i = 0;
+	zero = (unsigned char *)dst;
+	while (n > i)
+	{
+		zero[i] = 0;
+		i++;
+	}
+}
+
+void	*ft_calloc(size_t num, size_t size)
+{
+	unsigned char	*str;
+	size_t			total_size;
+
+	total_size = num * size;
+	str = (unsigned char *)malloc(total_size);
+	if (str == NULL)
+		return (NULL);
+	ft_bzero(str, total_size);
+	return (str);
+}
+
+char	*ft_strcat(char *dest, char *src)
+{
+	int	i;
+	int	len;
+
+	i = 0;
+	while (dest[i])
+		i++;
+	len = 0;
+	while (src[len])
+	{
+		dest[i] = src[len];
+		i++;
+		len++;
+	}
+	dest[i] = '\0';
+	return (dest);
+}
+
+char	*ft_strcpy(char *dest, char *src)
+{
+	int	i;
+
+	i = 0;
+	while (src[i])
+	{
+		dest[i] = src[i];
+		i++;
+	}
+	dest[i] = '\0';
+	return (dest);
 }

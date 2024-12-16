@@ -23,9 +23,9 @@
 static int add_arg(char ***args, char *token)
 {
     int count;
-	char **new_args;
+    char **new_args;
 
-	count = 0;
+    count = 0;
     while (*args && (*args)[count])
         count++;
     new_args = ft_realloc(*args, sizeof(char*) * (count + 2));
@@ -42,12 +42,12 @@ static int add_arg(char ***args, char *token)
 t_pipeline *parse_pipeline(char **tokens)
 {
     t_pipeline *pipeline;
-	t_command *current;
-	t_command *new_cmd;
-	char **args;
-	int i;
+    t_command *current;
+    t_command *new_cmd;
+    char **args;
+    int i;
 
-	pipeline = malloc(sizeof(t_pipeline));
+    pipeline = malloc(sizeof(t_pipeline));
     if (!pipeline)
         return (NULL);
     pipeline->commands = NULL;
@@ -58,10 +58,10 @@ t_pipeline *parse_pipeline(char **tokens)
         return (NULL);
     }
     ft_memset(current, 0, sizeof(t_command));
-	current->in_fd = -1;
+    current->in_fd = -1; // Important pour ne pas fermer stdin par erreur
     pipeline->commands = current;
     args = NULL;
-	i = 0;
+    i = 0;
     while (tokens && tokens[i])
     {
         if (ft_strcmp(tokens[i], "|") == 0)
@@ -72,7 +72,7 @@ t_pipeline *parse_pipeline(char **tokens)
             if (!new_cmd)
                 return (NULL);
             ft_memset(new_cmd, 0, sizeof(t_command));
-			new_cmd->in_fd = -1;
+            new_cmd->in_fd = -1;
             current->next = new_cmd;
             current = new_cmd;
             args = NULL;
@@ -109,13 +109,12 @@ t_pipeline *parse_pipeline(char **tokens)
         }
         else
         {
-			// arguments normaux.
             if (!add_arg(&args, tokens[i]))
                 return (NULL);
         }
-		i++;
+        i++;
     }
-    // Derniere commande
+    // Dernière commande
     current->argv = args;
     return (pipeline);
 }

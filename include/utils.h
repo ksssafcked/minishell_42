@@ -25,5 +25,9 @@ void	*ft_realloc(void *ptr, size_t size);
 void	*ft_memset(void *str, int c, size_t n);
 char	*ft_strjoin(char *s1, char *s2, void *ptr);
 char	*ft_strnstr(const char *big, const char *little, unsigned int len);
+int		ft_isalnum(int c);
+void	*ft_calloc(size_t num, size_t size);
+char	*ft_strcat(char *dest, char *src);
+char	*ft_strcpy(char *dest, char *src);
 
 #endif

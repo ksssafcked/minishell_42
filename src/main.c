@@ -6,7 +6,7 @@
 /*   By: lsaiti <lsaiti@student.42.fr>              +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/12/14 13:32:33 by qudomino          #+#    #+#             */
-/*   Updated: 2024/12/16 16:16:10 by lsaiti           ###   ########.fr       */
+/*   Updated: 2024/12/16 21:36:58 by lsaiti           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -28,20 +28,21 @@
 #include "../include/pipeline.h"
 #include "../include/command.h"
 #include "../include/built_in.h"
-
+#include "../include/expand.h" // Ajout pour l'expansion
 
 // structure globale du shell pour la passer facilement aux fonctions
 typedef struct s_shell {
     t_env *env;
+    int last_exit_code; // Ajout du champ pour stocker le code de retour
 } t_shell;
 
 void free_pipeline(t_pipeline *pl)
 {
-	t_command *c;
-	t_command *next;
-	int i;
+    t_command *c;
+    t_command *next;
+    int i;
     if (!pl) 
-		return;
+        return;
     c = pl->commands;
     while (c)
     {
@@ -80,65 +81,68 @@ static void free_tokens(char **tokens)
 int main(int argc, char **argv, char **envp)
 {
     char *line;
-	char **tokens;
-    int j;
+    char **tokens;
+    char    *expanded;
     t_shell shell;
-	t_pipeline *pl;
+    t_pipeline *pl;
+	int idx;
+	int ret;
     (void)argc;
     (void)argv;
 
-    shell.env = env_init(envp); // On recup l environnement utilisateur et on l'envoie au built-in env.
+    shell.env = env_init(envp); // On recup l environnement utilisateur.
     if (!shell.env)
     {
         fprintf(stderr, "Error: failed to init env\n");
         return (1);
-    }	
+    }
+    shell.last_exit_code = 0; // Initialisation du last_exit_code.
 
-    init_signals(); // gestion des signaux (on va les recuperer en fonction de la combinaison de touche qui est rentrée).
+    init_signals(); // gestion des signaux.
 
     while (1)
     {
         line = readline("minishell> ");
-        if (line == NULL) // Si readline retourne NULL c'est que l'on a entre Ctrl-D (EOF).
+        if (line == NULL) // Ctrl-D
         {
             printf("exit\n");
             break;
         }
-        if (*line) // S'il y a bien un input.
-            add_history(line); // On ajoute la ligne rentree à la fin de la liste chaînee 'history'.
-        // On tokenise la ligne :
+        if (*line)
+            add_history(line);
         tokens = ft_split_line(line);
         if (tokens && tokens[0])
         {
-            // Avant on affichait les tokens maintenant on va verifier si c'est un builtin
+            // Etape d'expansion AVANT parse_pipeline
+			idx = 0;
+            // while (tokens[idx])
+            // {
+            //     expanded = expand_token(tokens[idx], shell.env, shell.last_exit_code);
+            //     free(tokens[idx]);
+            //     tokens[idx] = expanded;
+			// 	idx++;
+            // }
+            while (tokens[idx])
+            {
+                if (is_simple_quote(tokens[idx]))
+                    tokens[idx] = delete_quote(tokens[idx]);
+                else
+                {
+                    if (is_double_quote(tokens[idx]))
+                        tokens[idx] = delete_quote(tokens[idx]);
+                    expanded = expand_token(tokens[idx], shell.env, shell.last_exit_code);
+                    free(tokens[idx]);
+                    tokens[idx] = expanded;
+                }
+                idx++;
+            }
+            // Verif des built-ins
             if (ft_strcmp(tokens[0], "env") == 0)
-            {
-                // builtin env
                 env_print(shell.env);
-            }
-            else if (ft_strcmp(tokens[0], "export") == 0)
-            {
-                // builtin export
-                export_cmd(shell.env, tokens[1]);
-            }
-            else if (ft_strcmp(tokens[0], "unset") == 0)
-            {
-                // builtin unset
-                unset_cmd(&shell.env, tokens[1]);
-            }
-            else if (ft_strcmp(tokens[0], "echo") == 0)
-			{
-                // builtin echo
-            	echo_cmd(&tokens[1]);
-            }
             else if (ft_strcmp(tokens[0], "cd") == 0)
-			{
-                // builtin cd
-            	shell.env = cd_do_cmd(shell.env, tokens[1]);
-            }
+                shell.env = cd_do_cmd(shell.env, tokens[1]);
             else if (ft_strcmp(tokens[0], "pwd") == 0)
             {
-                // builtin pwd
                 char *cwd = getcwd(NULL, 0);
                 if (cwd)
                 {
@@ -150,41 +154,31 @@ int main(int argc, char **argv, char **envp)
             }
             else if (ft_strcmp(tokens[0], "exit") == 0)
             {
-                // builtin exit
-                // On clean l'env, etc... 
                 free(line);
-                j = 0;
-                while (tokens[j])
-                {
-                    free(tokens[j]);
-                    j++;
-                }
-                free(tokens);
+                free_tokens(tokens);
                 env_free(shell.env);
                 return (0);
             }
             else
             {
-                // Ici si on est pas sur un env/pwd/exit => on traite la ligne comme un pipeline
+                // Pipeline
                 pl = parse_pipeline(tokens);
                 if (!pl)
                 {
-                    // Erreur de parsing, on lib les tokens et on continue
                     free_tokens(tokens);
                     free(line);
                     continue;
                 }
-                // Process les heredoc avant d'exec
                 if (!process_heredocs(pl->commands))
                 {
-                    // Erreur lors du traitement heredot faut tout free
                     free_pipeline(pl);
                     free_tokens(tokens);
                     free(line);
                     continue;
                 }
-                // On exec le pipeline (va gerer redirections, pipes, etc.)
-                execute_pipeline(pl, shell.env);
+                // Execute pipeline et mettre a jour last_exit_code
+                ret = execute_pipeline(pl, shell.env);
+                shell.last_exit_code = ret;
                 free_pipeline(pl);
             }
         }
@@ -194,6 +188,6 @@ int main(int argc, char **argv, char **envp)
         printf("You typed in : %s\n", line);
         free(line);
     }
-    env_free(shell.env); // Liberation des ressources de l'environnement.
+    env_free(shell.env);
     return (0);
 }

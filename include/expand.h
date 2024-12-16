@@ -1,22 +1,20 @@
 /* ************************************************************************** */
 /*                                                                            */
 /*                                                        :::      ::::::::   */
-/*   parser.h                                           :+:      :+:    :+:   */
+/*   expand.h                                           :+:      :+:    :+:   */
 /*                                                    +:+ +:+         +:+     */
-/*   By: lsaiti <lsaiti@student.42.fr>              +#+  +:+       +#+        */
+/*   By: qudomino <qudomino@student.42mulhouse.fr>  +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
-/*   Created: 2024/12/14 15:11:23 by qudomino          #+#    #+#             */
-/*   Updated: 2024/12/16 21:03:43 by lsaiti           ###   ########.fr       */
+/*   Created: 2024/12/16 17:19:22 by qudomino          #+#    #+#             */
+/*   Updated: 2024/12/16 17:19:42 by qudomino         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
-#ifndef PARSER_H
-# define PARSER_H
+#ifndef EXPAND_H
+# define EXPAND_H
 
-char	**ft_split_line(char *line);
-char    *delete_quote(char *line);
-int is_double_quote(char *line);
-int is_simple_quote(char *line);
-char *get_spaces(char *line);
+# include "env.h"
+
+char *expand_token(const char *token, t_env *env, int last_exit_code);
 
 #endif
