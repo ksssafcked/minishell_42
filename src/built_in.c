@@ -6,7 +6,7 @@
 /*   By: lsaiti <lsaiti@student.42.fr>              +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/12/16 16:52:12 by lsaiti            #+#    #+#             */
-/*   Updated: 2024/12/16 16:52:13 by lsaiti           ###   ########.fr       */
+/*   Updated: 2024/12/17 17:09:52 by lsaiti           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -114,7 +114,7 @@ char	*get_path(t_env *env, char *dir)
 {
 	char *full_path;
 
-	if (!dir)
+	if (!dir || ft_strcmp(dir, "~") == 0)
 	{
 		dir = (get_env(env, "HOME="))->var;
 		full_path = ft_substr(dir, 5);
@@ -153,27 +153,68 @@ t_env	*cd_do_cmd(t_env *env, char *new_dir)
 	return (env);
 }
 
-void	export_cmd(t_env *env, char *new_env)
+char	*get_var(char *var) // renvoie le nom de variable, exemple : VAR=VALEUR renvoie VAR
 {
-	if (!new_env || !env)
-		return ;
-	while (env && env->next)
-		env = env->next;
-	env->next = env_new_elem(new_env);
+	char	*str;
+	int	i;
+	int	j;
+	
+	i = 0;
+	while (var[i] && var[i] != '=')
+		i++;
+	str = malloc(sizeof(char) * (i + 1));
+	if (!str)
+		return (NULL);
+	j = 0;
+	while (j < i)
+	{
+		str[j] = var[j];
+		j++;
+	}
+	str[j] = '\0';
+	return (str);
 }
 
-void	unset_cmd(t_env **env, char *delete_var)
+// check si la variable qu'on veut creer est sous la bonne forme
+void	export_cmd(t_env *env, char *new_env)
+{
+	t_env	*target_env;
+	t_env	*new_target;
+	char	*var;
+
+	if (!new_env || !env)
+		return ;
+	var = get_var(new_env);
+	target_env = get_env(env, var);
+	if (target_env)
+	{
+		free(target_env->var);
+		new_target = env_new_elem(new_env);
+		target_env->var = new_target->var;
+		free(new_target);
+	}
+	else if (!target_env)
+	{
+		target_env = env;
+		while (target_env && target_env->next)
+			target_env = target_env->next;
+		target_env->next = env_new_elem(new_env);
+	}
+	free(var);
+}
+
+
+// check si la variable est bonne sinon seg fault
+void	unset_cmd(t_env *env, char *delete_var)
 {
 	t_env *to_delete;
-	t_env	*current;
-	
-	current = *env;
-	if (!current)
+
+	if (!env)
 		return ;
-	to_delete = get_env(current, delete_var);
-	while (current->next && current->next != to_delete)
-		current = current->next;
-	current->next = to_delete->next;
+	to_delete = get_env(env, delete_var);
+	while (env->next && env->next != to_delete)
+		env = env->next;
+	env->next = to_delete->next;
 	free(to_delete->var);
 	free(to_delete); 
 }

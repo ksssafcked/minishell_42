@@ -249,3 +249,11 @@ char	*ft_strcpy(char *dest, char *src)
 	dest[i] = '\0';
 	return (dest);
 }
+
+int	ft_isdigit(int d)
+{
+	if (d >= 48 && d <= 57)
+		return (1);
+	else
+		return (0);
+}

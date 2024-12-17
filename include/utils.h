@@ -29,5 +29,7 @@ int		ft_isalnum(int c);
 void	*ft_calloc(size_t num, size_t size);
 char	*ft_strcat(char *dest, char *src);
 char	*ft_strcpy(char *dest, char *src);
+int		ft_isdigit(int d);
+
 
 #endif

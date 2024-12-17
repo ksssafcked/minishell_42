@@ -6,7 +6,7 @@
 /*   By: lsaiti <lsaiti@student.42.fr>              +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/12/14 15:11:08 by qudomino          #+#    #+#             */
-/*   Updated: 2024/12/16 21:38:10 by lsaiti           ###   ########.fr       */
+/*   Updated: 2024/12/17 16:58:45 by lsaiti           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -15,6 +15,60 @@
 #include <string.h>
 #include "../include/parser.h"
 #include "../include/utils.h"
+
+int  is_next_quoted(char *line)
+{
+    int i;
+    int dbl;
+
+    dbl = 0;
+    i = 0;
+    if (line[i] == 34)
+    {
+       dbl = 1;
+    }
+    while (line[++i])
+    {
+        if (dbl && line[i] == 39)
+            return (0);
+        else if (!dbl && line[i] == 34)
+            return (0);
+        else if (dbl && line[i] == 34)
+            return (i);
+        else if (!dbl && line[i] == 39)
+            return (i);
+    }
+    return (0);
+}
+
+int	is_quoted(char c)
+{
+	if (c == 39 || c == 34)
+		return (1);
+	return (0);
+}
+
+int	is_well_quoted(char	*line)
+{
+	int	i;
+	int	quote;
+
+    i = 0;
+	while (line[i])
+	{
+		if (is_quoted(line[i]))
+		{
+			quote = is_next_quoted(&line[i]);
+			if (quote)
+				i += quote;
+			else
+				return (0);
+		}
+        i++;
+	}
+    return (1);
+}
+
 
 static int is_sep(char c)
 {
@@ -89,6 +143,8 @@ char **ft_split_line(char *line)
 	t = 0;
 	in_word = 0;
 	if (!line)
+		return (NULL);
+	if (!is_well_quoted(line))
 		return (NULL);
 	clean_line = get_spaces(line);
 	word_count = count_words(clean_line);
@@ -187,6 +243,31 @@ char    *delete_quote(char *line)
     free(line);
     return (final);
 }
+
+// size_t	is_quoted(char c)
+// {
+// 	if (c == 39 || c == 34)
+// 		return (1);
+// 	return (0);
+// }
+
+// size_t	is_well_quoted(char	*line)
+// {
+// 	size_t	i;
+// 	size_t	quote;
+
+// 	while (line[i])
+// 	{
+// 		if (is_quote(line[i]))
+// 		{
+// 			quote = is_next_quoted(line[i]);
+// 			if (quote)
+// 				i += quote;
+// 			else
+// 				return (0);
+// 		}
+// 	}
+// }
 
 // char    **parsing(const char **tokens, t_env *env)
 // {
