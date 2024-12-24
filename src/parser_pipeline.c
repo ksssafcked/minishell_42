@@ -18,103 +18,144 @@
 #include "../include/parser_pipeline.h"
 #include "../include/utils.h"
 
-// Fonction utilitaire pour ajouter un argument à un tableau d'arguments.
-// Realloue et ajoute l'argument a la fin.
-static int add_arg(char ***args, char *token)
+static t_command	*allocate_command(void)
 {
-    int count;
-    char **new_args;
+	t_command	*cmd;
 
-    count = 0;
-    while (*args && (*args)[count])
-        count++;
-    new_args = ft_realloc(*args, sizeof(char*) * (count + 2));
-    if (!new_args)
-        return (0);
-    *args = new_args;
-    (*args)[count] = ft_strdup(token);
-    if (!(*args)[count])
-        return (0);
-    (*args)[count + 1] = NULL;
-    return (1);
+	cmd = malloc(sizeof(t_command));
+	if (!cmd)
+		return (NULL);
+	ft_memset(cmd, 0, sizeof(t_command));
+	cmd->in_fd = -1;
+	cmd->out_fd = -1;
+	cmd->append = 0;
+	cmd->heredoc_quoted = 0;
+	cmd->next = NULL;
+	return (cmd);
 }
 
-t_pipeline *parse_pipeline(char **tokens)
+static char	**extend_argv(char **argv, int count)
 {
-    t_pipeline *pipeline;
-    t_command *current;
-    t_command *new_cmd;
-    char **args;
-    int i;
+	return (ft_realloc(argv, sizeof(char *) * (count + 2)));
+}
 
-    pipeline = malloc(sizeof(t_pipeline));
-    if (!pipeline)
-        return (NULL);
-    pipeline->commands = NULL;
-    current = malloc(sizeof(t_command));
-    if (!current)
-    {
-        free(pipeline);
-        return (NULL);
-    }
-    ft_memset(current, 0, sizeof(t_command));
-    current->in_fd = -1; // Important pour ne pas fermer stdin par erreur
-    pipeline->commands = current;
-    args = NULL;
-    i = 0;
-    while (tokens && tokens[i])
-    {
-        if (ft_strcmp(tokens[i], "|") == 0)
-        {
-            // Nouvelle commande
-            current->argv = args;
-            new_cmd = malloc(sizeof(t_command));
-            if (!new_cmd)
-                return (NULL);
-            ft_memset(new_cmd, 0, sizeof(t_command));
-            new_cmd->in_fd = -1;
-            current->next = new_cmd;
-            current = new_cmd;
-            args = NULL;
-        }
-        else if (ft_strcmp(tokens[i], "<") == 0)
-        {
-            i++;
-            if (tokens[i])
-                current->infile = ft_strdup(tokens[i]);
-        }
-        else if (ft_strcmp(tokens[i], ">") == 0)
-        {
-            i++;
-            if (tokens[i])
-            {
-                current->outfile = ft_strdup(tokens[i]);
-                current->append = 0;
-            }
-        }
-        else if (ft_strcmp(tokens[i], ">>") == 0)
-        {
-            i++;
-            if (tokens[i])
-            {
-                current->outfile = ft_strdup(tokens[i]);
-                current->append = 1;
-            }
-        }
-        else if (ft_strcmp(tokens[i], "<<") == 0)
-        {
-            i++;
-            if (tokens[i])
-                current->heredoc_delim = ft_strdup(tokens[i]);
-        }
-        else
-        {
-            if (!add_arg(&args, tokens[i]))
-                return (NULL);
-        }
-        i++;
-    }
-    // Dernière commande
-    current->argv = args;
-    return (pipeline);
+static int	extend_arguments(t_command *cmd, char *token)
+{
+	int		count;
+	char	**new_args;
+
+	count = 0;
+	while (cmd->argv && cmd->argv[count])
+		count++;
+	new_args = extend_argv(cmd->argv, count);
+	if (!new_args)
+		return (0);
+	cmd->argv = new_args;
+	cmd->argv[count] = ft_strdup(token);
+	if (!cmd->argv[count])
+		return (0);
+	cmd->argv[count + 1] = NULL;
+	return (1);
+}
+
+static void	append_command_to_pipeline(t_pipeline *pipeline, t_command *cmd)
+{
+	t_command	*last;
+
+	last = pipeline->commands;
+	while (last->next)
+		last = last->next;
+	last->next = cmd;
+}
+
+static t_command	*create_new_command(t_pipeline *pipeline)
+{
+	t_command	*cmd;
+
+	cmd = allocate_command();
+	if (!cmd)
+		return (NULL);
+	if (!pipeline->commands)
+		pipeline->commands = cmd;
+	else
+		append_command_to_pipeline(pipeline, cmd);
+	return (cmd);
+}
+
+static int	set_input_file(t_command *cmd, char *token)
+{
+	cmd->infile = ft_strdup(token);
+	return (cmd->infile != NULL);
+}
+
+static int	set_output_file(t_command *cmd, char *token, int append)
+{
+	cmd->outfile = ft_strdup(token);
+	if (!cmd->outfile)
+		return (0);
+	cmd->append = append;
+	return (1);
+}
+
+static int	set_heredoc(t_command *cmd, char *token)
+{
+	cmd->heredoc_delim = ft_strdup(token);
+	return (cmd->heredoc_delim != NULL);
+}
+
+static int	hstok(t_command **cmd, char *token, int *index, char **tokens)
+{
+	(*index)++;
+	if (ft_strcmp(token, "<") == 0)
+		return (tokens[*index] && set_input_file(*cmd, tokens[*index]));
+	if (ft_strcmp(token, ">") == 0)
+		return (tokens[*index] && set_output_file(*cmd, tokens[*index], 0));
+	if (ft_strcmp(token, ">>") == 0)
+		return (tokens[*index] && set_output_file(*cmd, tokens[*index], 1));
+	if (ft_strcmp(token, "<<") == 0)
+		return (tokens[*index] && set_heredoc(*cmd, tokens[*index]));
+	return (0);
+}
+
+static int	pst(t_pipeline *pipe, t_command **cmd, char **tokens, int *index)
+{
+	char	*token;
+
+	token = tokens[*index];
+	if (ft_strcmp(token, "|") == 0)
+	{
+		*cmd = create_new_command(pipe);
+		return (*cmd != NULL);
+	}
+	if (ft_strcmp(token, "<") == 0 || ft_strcmp(token, ">") == 0
+		|| ft_strcmp(token, ">>") == 0 || ft_strcmp(token, "<<") == 0)
+		return (hstok(cmd, token, index, tokens));
+	return (extend_arguments(*cmd, token));
+}
+
+t_pipeline	*parse_pipeline(char **tokens)
+{
+	t_pipeline	*pipeline;
+	t_command	*current_cmd;
+	int			i;
+
+	pipeline = malloc(sizeof(t_pipeline));
+	if (!pipeline)
+		return (NULL);
+	pipeline->commands = NULL;
+	current_cmd = allocate_command();
+	if (!current_cmd)
+	{
+		free(pipeline);
+		return (NULL);
+	}
+	pipeline->commands = current_cmd;
+	i = 0;
+	while (tokens && tokens[i])
+	{
+		if (!pst(pipeline, &current_cmd, tokens, &i))
+			return (free_pipeline(pipeline), NULL);
+		i++;
+	}
+	return (pipeline);
 }

@@ -6,7 +6,7 @@
 #    By: lsaiti <lsaiti@student.42.fr>              +#+  +:+       +#+         #
 #                                                 +#+#+#+#+#+   +#+            #
 #    Created: 2024/12/14 13:31:37 by qudomino          #+#    #+#              #
-#    Updated: 2024/12/16 21:00:38 by lsaiti           ###   ########.fr        #
+#    Updated: 2024/12/20 16:54:22 by qudomino         ###   ########.fr        #
 #                                                                              #
 # **************************************************************************** #
 
@@ -15,7 +15,7 @@ CC = cc
 CFLAGS = -Wall -Wextra -Werror -g
 SRC = src/main.c src/signals.c src/parser.c src/env.c utils/utils.c src/execute.c \
 	  src/execute_pipeline.c src/heredoc.c src/parser_pipeline.c src/built_in.c \
-	  src/expand.c src/parser_utils.c
+	  src/expand.c src/parser_utils.c src/redirections.c 
 OBJS = $(SRC:.c=.o)
 
 all: $(NAME)
@@ -30,4 +30,3 @@ fclean: clean
 	rm -f $(NAME)
 
 re: fclean all
-

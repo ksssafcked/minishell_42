@@ -6,7 +6,7 @@
 /*   By: lsaiti <lsaiti@student.42.fr>              +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/12/14 13:32:33 by qudomino          #+#    #+#             */
-/*   Updated: 2024/12/17 17:21:01 by lsaiti           ###   ########.fr       */
+/*   Updated: 2024/12/23 20:00:00 by lsaiti           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -21,107 +21,166 @@
 #include "../include/parser.h"
 #include "../include/env.h"
 #include "../include/utils.h"
-#include "../include/execute.h"
 #include "../include/parser_pipeline.h"
 #include "../include/execute_pipeline.h"
 #include "../include/heredoc.h"
 #include "../include/pipeline.h"
 #include "../include/command.h"
 #include "../include/built_in.h"
-#include "../include/expand.h" // Ajout pour l'expansion
+#include "../include/expand.h"
 
-// structure globale du shell pour la passer facilement aux fonctions
-typedef struct s_shell {
-    t_env *env;
-    int last_exit_code; // Ajout du champ pour stocker le code de retour
-} t_shell;
+#define TOKEN_UNQUOTED 'U'
+#define TOKEN_SINGLE_QUOTE 'S'
+#define TOKEN_DOUBLE_QUOTE 'D'
 
-void free_pipeline(t_pipeline *pl)
+int open_all_redirections(t_pipeline *pl, int *exit_code);
+
+void	free_pipeline(t_pipeline *pl)
 {
-    t_command *c;
-    t_command *next;
-    int i;
-    if (!pl) 
-        return;
-    c = pl->commands;
-    while (c)
-    {
-        next = c->next;
-        if (c->argv)
-        {
-            i = 0;
-            while (c->argv[i])
-                free(c->argv[i++]);
-            free(c->argv);
-        }
-        free(c->infile);
-        free(c->outfile);
-        free(c->heredoc_delim);
-        if (c->in_fd != -1)
-            close(c->in_fd);
-        free(c);
-        c = next;
-    }
-    free(pl);
+	t_command *c;
+	t_command *next;
+	int i;
+	if (!pl)
+		return ;
+	c = pl->commands;
+	while (c)
+	{
+		next = c->next;
+		if (c->argv)
+		{
+			i = 0;
+			while (c->argv[i])
+				free(c->argv[i++]);
+			free(c->argv);
+		}
+		free(c->infile);
+		free(c->outfile);
+		free(c->heredoc_delim);
+		if (c->in_fd != -1)
+			close(c->in_fd);
+		if (c->out_fd != -1)
+			close(c->out_fd);
+		free(c);
+		c = next;
+	}
+	free(pl);
 }
 
-static void free_tokens(char **tokens)
+static void	free_tokens(char **tokens)
 {
-    int i = 0;
-    if (!tokens)
-        return;
-    while (tokens[i])
-    {
-        free(tokens[i]);
-        i++;
-    }
-    free(tokens);
+	int i;
+
+	i = 0;
+	if (!tokens)
+		return ;
+	while (tokens[i])
+	{
+		free(tokens[i]);
+		i++;
+	}
+	free(tokens);
 }
 
-		// Fonctions utilitaires locales
-		// Définissons une fonction inline ici pour vérifier si un token est un opérateur
-		// comme |, <, >, << ou >>
-static int is_operator_token(char *s)
+static int	is_operator_token(char *s)
 {
 	if (!s)
-		return 0;
-	// On considère |, <, >, <<, >> comme des opérateurs
-	// Attention, si tu as déjà défini une telle fonction, réutilise-la
-	if (!ft_strcmp(s, "|") || !ft_strcmp(s, "<") || !ft_strcmp(s, ">") || !ft_strcmp(s, ">>") || !ft_strcmp(s, "<<"))
-		return 1;
-	return 0;
+		return (0);
+	if (s[0] != TOKEN_UNQUOTED && s[0] != TOKEN_SINGLE_QUOTE
+		&& s[0] != TOKEN_DOUBLE_QUOTE)
+		return (0);
+	s++;
+	if (!ft_strcmp(s, "|") || !ft_strcmp(s, "<") || !ft_strcmp(s, ">")
+		|| !ft_strcmp(s, ">>") || !ft_strcmp(s, "<<"))
+		return (1);
+	return (0);
+}
+
+static void remove_empty_tokens(char **tokens)
+{
+    int i = 0;
+    while (tokens[i])
+    {
+        if (ft_strlen(tokens[i]) == 0)
+        {
+            free(tokens[i]);
+            int j = i;
+            while (tokens[j])
+            {
+                tokens[j] = tokens[j + 1];
+                j++;
+            }
+        }
+        else
+            i++;
+    }
+}
+
+static int	is_single_command_no_pipe(t_pipeline *pl)
+{
+	if (!pl || !pl->commands)
+		return (0);
+	return (pl->commands->next == NULL);
+}
+
+static int	is_builtin_cmd(char **argv)
+{
+	if (!argv || !argv[0])
+		return (0);
+	if (!ft_strcmp(argv[0], "echo"))
+		return (1);
+	if (!ft_strcmp(argv[0], "cd"))
+		return (1);
+	if (!ft_strcmp(argv[0], "pwd"))
+		return (1);
+	if (!ft_strcmp(argv[0], "export"))
+		return (1);
+	if (!ft_strcmp(argv[0], "unset"))
+		return (1);
+	if (!ft_strcmp(argv[0], "env"))
+		return (1);
+	if (!ft_strcmp(argv[0], "exit"))
+		return (1);
+	return (0);
+}
+
+static int	validate_syntax(char **tokens, int count)
+{
+	int i;
+
+	i = 0;
+	while (i < count)
+	{
+		if (is_operator_token(tokens[i]))
+		{
+			if (i == 0)
+				return (i);
+			if (i == count - 1)
+				return (i);
+			if (is_operator_token(tokens[i + 1]))
+				return (i + 1);
+		}
+		i++;
+	}
+	return (-1);
 }
 
 int main(int argc, char **argv, char **envp)
 {
-    char *line;
-    char **tokens;
-	char *tmp;
-	char *first;
-	char *last;
-	int j;
-    char    *expanded;
-    t_shell shell;
-    t_pipeline *pl;
-	int idx;
-	int ret;
-	int count_tok;
     (void)argc;
     (void)argv;
-
-    shell.env = env_init(envp); // On recup l environnement utilisateur.
+    t_shell shell;
+    shell.env = env_init(envp); 
     if (!shell.env)
     {
         fprintf(stderr, "Error: failed to init env\n");
         return (1);
     }
-    shell.last_exit_code = 0; // Initialisation du last_exit_code.
-
-    init_signals(); // gestion des signaux.
+    shell.last_exit_code = 0;
+    init_signals();
 
     while (1)
     {
-        line = readline("minishell> ");
+        char *line = readline("minishell> ");
         if (line == NULL) // Ctrl-D
         {
             printf("exit\n");
@@ -129,184 +188,165 @@ int main(int argc, char **argv, char **envp)
         }
         if (*line)
             add_history(line);
-        tokens = ft_split_line(line); // Lexer
-		if (!tokens || !tokens[0])
-		{
-		// Ligne vide ou seulement espaces
-			if (tokens)
-				free_tokens(tokens);
-			free(line);
-			continue; // On attend un nouvel input
-		}
-		// Vérification de syntaxe de base : pipe ou redirection en debut / fin de ligne
-		first = tokens[0];
-		// Trouver le dernier token
-		count_tok = 0;
-		while (tokens[count_tok])
-			count_tok++;
-		last = tokens[count_tok - 1];
-		// Si premier token est un operateur == erreur de syntaxe
-		if (is_operator_token(first))
-		{
-			fprintf(stderr, "minishell: syntax error near unexpected token `%s`\n", first);
-			free_tokens(tokens);
-			free(line);
-			continue;
-		}
-		// Si le dernier token est un opérateur, c'est aussi une erreur de syntaxe
-		if (is_operator_token(last))
-		{
-			fprintf(stderr, "minishell: syntax error near unexpected token `%s`\n", last);
-			free_tokens(tokens);
-			free(line);
-			continue;
-		}	
-        if (tokens && tokens[0])
+
+        char **tokens = ft_split_line(line);
+        if (!tokens || !tokens[0])
         {
-            // Etape d'expansion AVANT parse_pipeline
-			idx = 0;
-			while (tokens[idx])
-			{
-				if (is_simple_quote(tokens[idx]))
-				{
-				// Detail des etapes :
-				// Le token est entre quotes simples, ex: 'hello $USER'
-				// On retire les quotes simples, pas d'expansion.
-					tmp = tokens[idx];
-					tokens[idx] = delete_quote(tmp); // delete_quote enleve les quotes de debut et de fin
-				// PAS d'expansion ici, on laisse tel quel.
-				}
-				else if (is_double_quote(tokens[idx]))
-				{
-					// Le token est entre quotes doubles, ex: "hello $USER"
-					// On retire les quotes doubles, puis on fait l'expansion
-					tmp = tokens[idx];
-					tokens[idx] = delete_quote(tmp);
-					expanded = expand_token(tokens[idx], shell.env, shell.last_exit_code);
-					free(tokens[idx]);
-					tokens[idx] = expanded;
-				}
-				else
-				{
-				// Le token n'a pas de quotes englobantes. ex: hello $USER
-				// On fait l'expansion directement
-					expanded = expand_token(tokens[idx], shell.env, shell.last_exit_code);
-					free(tokens[idx]);
-					tokens[idx] = expanded;
-				}
-				idx++;
-			}	
-            // Verif des built-ins
-            if (ft_strcmp(tokens[0], "env") == 0)
-                env_print(shell.env);
-			else if (ft_strcmp(tokens[0], "export") == 0)
-                export_cmd(shell.env, tokens[1]);
-            else if (ft_strcmp(tokens[0], "unset") == 0)
-                unset_cmd(shell.env, tokens[1]);
-            else if (ft_strcmp(tokens[0], "cd") == 0)
-                shell.env = cd_do_cmd(shell.env, tokens[1]);
-            else if (ft_strcmp(tokens[0], "pwd") == 0)
+            free_tokens(tokens);
+            free(line);
+            continue;
+        }
+
+        int count_tok = 0;
+        while (tokens[count_tok])
+            count_tok++;
+        char *first = tokens[0];
+        char *last = tokens[count_tok - 1];
+
+        int syntax_error = -1;
+        if (is_operator_token(first))
+        {
+            syntax_error = 0; // first token
+        }
+        else if (is_operator_token(last))
+        {
+            syntax_error = count_tok -1; // last token
+        }
+        else
+        {
+            syntax_error = validate_syntax(tokens, count_tok);
+        }
+
+        if (syntax_error != -1)
+        {
+            fprintf(stderr, "bash: syntax error near unexpected token `%s'\n", tokens[syntax_error] +1);
+            free_tokens(tokens);
+            free(line);
+            shell.last_exit_code = 2;
+            continue;
+        }
+
+        int idx = 0;
+        while (tokens[idx])
+        {
+            char *expanded;
+            if (is_simple_quote(tokens[idx]))
             {
-                char *cwd = getcwd(NULL, 0);
-                if (cwd)
-                {
-                    printf("%s\n", cwd);
-                    free(cwd);
-                }
-                else
-                    perror("pwd");
+                char *tmp = delete_quote(tokens[idx]); 
+                tokens[idx] = tmp;
             }
-			// DEBUT
-			else if (ft_strcmp(tokens[0], "exit") == 0)
-			{
-			// Gestion du builtin exit avec codes de retour
-			// Format: exit [n]
-			// Si n est un nombre, exit avec ce code
-			// Si pas d'argument, exit avec shell->last_exit_code
-			// Si argument invalide, afficher erreur et ne pas quitter
-
-				fprintf(stderr, "exit\n"); // Bash affiche "exit" quand on quitte
-
-				int exit_code;
-				if (!tokens[1])
-				{
-				// Pas d’argument -> on quitte avec shell->last_exit_code
-					exit_code = shell.last_exit_code;
-				}
-				else
-				{
-				// On a un argument
-				// Verif s’il est numerique
-					int is_numeric = 1;
-					int x = 0;
-					while (tokens[1][x])
-					{
-						if ((x == 0 && (tokens[1][x] == '+' || tokens[1][x] == '-')) 
-							|| ft_isdigit(tokens[1][x]))
-							continue;
-						else
-						{
-							is_numeric = 0;
-							break;
-						}
-						x++;
-					}
-
-					if (!is_numeric)
-					{
-						// Argument non numerique
-						fprintf(stderr, "minishell: exit: %s: numeric argument required\n", tokens[1]);
-						// Dans bash, si argument non numerique, on quitte avec 2
-						// bash quitte quand même avec code 2
-						exit_code = 2;
-					}
-					else
-					{
-						// Argument numerique
-						long val = strtol(tokens[1], NULL, 10); // REmplacer la fonction
-						// On prend val % 256 pour avoir un comportement similaire a bash
-						exit_code = (unsigned char)val;
-					}
-				}
-				free(line);
-				j = 0;
-				while (tokens[j])
-				{
-					free(tokens[j]);
-					j++;
-				}
-				free(tokens);
-				env_free(shell.env);
-				exit(exit_code);
-			}
-			// fin
+            else if (is_double_quote(tokens[idx]))
+            {
+                char *tmp = delete_quote(tokens[idx]);
+                expanded = expand_token(tmp, shell.env, shell.last_exit_code);
+                free(tmp);
+                tokens[idx] = expanded;
+            }
             else
             {
-                // Pipeline
-                pl = parse_pipeline(tokens);
-                if (!pl)
-                {
-                    free_tokens(tokens);
-                    free(line);
-                    continue;
-                }
-                if (!process_heredocs(pl->commands))
-                {
-                    free_pipeline(pl);
-                    free_tokens(tokens);
-                    free(line);
-                    continue;
-                }
-                // Execute pipeline et mettre a jour last_exit_code
-                ret = execute_pipeline(pl, shell.env);
-                shell.last_exit_code = ret;
-                free_pipeline(pl);
+                char *tmp = delete_quote(tokens[idx]);
+                expanded = expand_token(tmp, shell.env, shell.last_exit_code);
+                free(tmp);
+                tokens[idx] = expanded;
             }
+            idx++;
         }
-        if (tokens)
+
+        remove_empty_tokens(tokens);
+        if (!tokens[0])
+        {
             free_tokens(tokens);
+            free(line);
+            continue;
+        }
+
+        t_pipeline *pl = parse_pipeline(tokens);
+        free_tokens(tokens);
+        if (!pl)
+        {
+            free(line);
+            shell.last_exit_code = 2;
+            continue;
+        }
+
+        if (!process_heredocs(pl->commands, shell.env, shell.last_exit_code))
+        {
+            free_pipeline(pl);
+            free(line);
+            continue;
+        }
+
+        if (is_single_command_no_pipe(pl) && is_builtin_cmd(pl->commands->argv))
+        {
+            if (!open_all_redirections(pl, &shell.last_exit_code))
+            {
+                free_pipeline(pl);
+                free(line);
+                shell.last_exit_code = 1;
+                continue;
+            }
+
+            t_command *c = pl->commands;
+            int saved_stdin = dup(STDIN_FILENO);
+            int saved_stdout = dup(STDOUT_FILENO);
+            if (saved_stdin == -1 || saved_stdout == -1)
+            {
+                perror("dup");
+                free_pipeline(pl);
+                free(line);
+                continue;
+            }
+
+            if (c->in_fd != -1)
+            {
+                if (dup2(c->in_fd, STDIN_FILENO) == -1)
+                {
+                    perror("dup2");
+                    shell.last_exit_code = 1;
+                    close(saved_stdin);
+                    close(saved_stdout);
+                    free_pipeline(pl);
+                    free(line);
+                    continue;
+                }
+                close(c->in_fd);
+            }
+            if (c->out_fd != -1)
+            {
+                if (dup2(c->out_fd, STDOUT_FILENO) == -1)
+                {
+                    perror("dup2");
+                    shell.last_exit_code = 1;
+                    close(saved_stdin);
+                    close(saved_stdout);
+                    free_pipeline(pl);
+                    free(line);
+                    continue;
+                }
+                close(c->out_fd);
+            }
+
+            run_builtin(&shell, c->argv);
+
+            if (dup2(saved_stdin, STDIN_FILENO) == -1)
+                perror("dup2");
+            if (dup2(saved_stdout, STDOUT_FILENO) == -1)
+                perror("dup2");
+            close(saved_stdin);
+            close(saved_stdout);
+
+            free_pipeline(pl);
+        }
+        else
+        {
+            int ret = execute_pipeline(pl, shell.env, &shell);
+            shell.last_exit_code = ret;
+            free_pipeline(pl);
+        }
+
         free(line);
     }
+
     env_free(shell.env);
-    return (0);
+    return 0;
 }

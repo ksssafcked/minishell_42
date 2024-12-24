@@ -19,4 +19,6 @@ typedef struct s_pipeline {
     t_command   *commands; // Liste chaînee des commandes
 } t_pipeline;
 
+void free_pipeline(t_pipeline *pl);
+
 #endif

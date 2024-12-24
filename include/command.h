@@ -14,13 +14,15 @@
 # define COMMAND_H
 
 typedef struct s_command {
-    char            **argv;          // Arguments de la commande
-    char            *infile;         // Fichier d'entree si <
-    char            *outfile;        // Fichier de sortie si > ou >>
-    int             append;          // 1 si >>, 0 si >
-    char            *heredoc_delim;  // Delimiteur pour <<
-	int             in_fd;			 // -1 si pas de heredoc pipe, sinon le fd du pipe heredoc
-    struct s_command *next;          // Prochaine commande dans le pipeline
+    char            **argv;          // Command arguments
+    char            *infile;         // Input file if '<'
+    char            *outfile;        // Output file if '>' or '>>'
+    int             append;          // 1 if >>, 0 if >
+    char            *heredoc_delim;  // Delimiter for '<<'
+    int             in_fd;           // -1 if no heredoc pipe, else the heredoc pipe fd
+	int				out_fd;			 // -1 if no outfile, else fd
+    int             heredoc_quoted;  // Indicates if heredoc delimiter was quoted
+    struct s_command *next;          // Next command in the pipeline
 } t_command;
 
 #endif

@@ -15,138 +15,127 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <errno.h>
 #include "../include/env.h"
 #include "../include/utils.h"
 
-//Verifie si le path pointe vers un fichier executable (genre a.out).
-static int is_executable(char *path)
+int g_cmd_error_code = 0; 
+
+static void set_error_and_code(const char *cmd, const char *msg, int code)
 {
-    struct stat st; // stat est une structure definie dans <sys/stat.h> qui contient des informations sur un fichier ou un repertoire.
-	// Cette structure sera utilisee pour stocker les metadonnees du fichier specifie par le Path.
-    if (stat(path, &st) == 0 && (st.st_mode & S_IXUSR)) // on extrait les metadonnes du fichier pointe par path et les stocks dans st. // == 0 on verifie que le fichier existe // st.st_mode ... verifie qu on peut l exec.
-        return (1);
-    return (0);
+    fprintf(stderr, "minishell: %s: %s\n", cmd, msg);
+    g_cmd_error_code = code;
 }
 
-// Si commande contient un '/', on essaie directement execve.
-// Si is_executable(path) est verifie, on renvoie un ft_strdup(path) sinon Null.
-static char *try_direct_path(char *cmd)
-{
-    if (ft_strchr(cmd, '/'))
-    {
-        if (is_executable(cmd))
-            return (ft_strdup(cmd));
-    }
-    return (NULL);
-}
-
-// Cherche la commande dans le PATH si pas de '/' dans cmd.
-static char *find_executable(t_env *env, char *cmd)
-{
-    char *path;
-	char **dirs;
-	char *full_path;
-	char *p;
-	int i;
-	int j;
-	int k;
-	int start;
-	int idx;
-	int count;
-	int len_dir;
-	int len_cmd;
-
-	path = env_get_value(env, "PATH");
-    if (!path)
-        return (NULL); // Pas de PATH, on ne peut pas chercher
-    full_path = NULL;
-    i = 0;
-
-    // On split sur ':' 
-    // Ici, fonction ft_split_char(path, ':') qui split sur ':'
-    p = ft_strdup(path);
-    if (!p)
-        return (NULL);
-    count = 1;
-	j = 0;
-    while (p[j])
-	{
-        if (p[j] == ':')
-            count++;
-		j++;
-	}
-    dirs = (char **)malloc((count + 1) * sizeof(char *));
-    if (!dirs)
-    {
-        free(p);
-        return (NULL);
-    }
-    // Split basique sur ':'
-    {
-        start = 0; 
-        idx = 0;
-		k = 0;
-        while (p[k])
-        {
-            if (p[k] == ':')
-            {
-                p[k] = '\0';
-                dirs[idx++] = ft_strdup(p + start);
-                start = k+1;
-            }
-			k++;
-        }
-        dirs[idx++] = ft_strdup(p + start);
-        dirs[idx] = NULL;
-    }
-    free(p);
-
-    // On parcourt chaque repertoire
-	i = 0;
-    while (dirs[i])
-    {
-        len_dir = ft_strlen(dirs[i]);
-        len_cmd = ft_strlen(cmd);
-        full_path = (char *)malloc((len_dir + 1 + len_cmd + 1) * sizeof(char));
-        if (!full_path)
-            break;
-        sprintf(full_path, "%s/%s", dirs[i], cmd);
-
-        if (is_executable(full_path))
-        {
-            // On libère dirs
-			j = 0;
-            while (dirs[j])
-			{
-				free(dirs[j]);
-				j++;
-			}
-            free(dirs);
-            return (full_path);
-        }
-        free(full_path);
-        full_path = NULL;
-		i++;
-    }
-    // On libere dirs si pas trouve
-	j = 0;
-    while (dirs[j])
-	{
-		free(dirs[j]);
-		j++;
-	}
-    free(dirs);
-    return (NULL);
-}
-
-  // Si cmd contient '/', on tente l'execution directe
- // Sinon, on cherche dans le PATH
 char *get_command_path(t_env *env, char *cmd)
 {
-    char *path;
+    struct stat st;
+    g_cmd_error_code = 0;
 
-	path = try_direct_path(cmd);
-    if (path)
-        return (path);
-    return (find_executable(env, cmd));
+    if (!cmd || !*cmd)
+    {
+        set_error_and_code(cmd, "command not found", 127);
+        return NULL;
+    }
+
+    if (ft_strchr(cmd, '/'))
+    {
+        if (stat(cmd, &st) == 0)
+        {
+            if (S_ISDIR(st.st_mode))
+            {
+                set_error_and_code(cmd, "Is a directory", 126);
+                return NULL;
+            }
+            if (access(cmd, X_OK) != 0)
+            {
+                if (errno == EACCES)
+                    set_error_and_code(cmd, "Permission denied", 126);
+                else
+                    set_error_and_code(cmd, "No such file or directory", 127);
+                return NULL;
+            }
+            return ft_strdup(cmd);
+        }
+        else
+        {
+            set_error_and_code(cmd, "No such file or directory", 127);
+            return NULL;
+        }
+    }
+
+    char *env_path = env_get_value(env, "PATH");
+    if (!env_path || !*env_path)
+    {
+        set_error_and_code(cmd, "command not found", 127);
+        return NULL;
+    }
+
+    char **dirs = NULL;
+    {
+        int i = 0;
+        char *p = env_path;
+        int count = 1;
+        while (*p)
+        {
+            if (*p == ':') count++;
+            p++;
+        }
+        dirs = malloc(sizeof(char*)*(count+1));
+        if (!dirs)
+            return NULL;
+        p = env_path;
+        int start = 0;
+        i = 0;
+        for (int c = 0; env_path[c]; c++)
+        {
+            if (env_path[c] == ':')
+            {
+                int length = c - start;
+                dirs[i] = malloc(length+1);
+                strncpy(dirs[i], env_path+start, length);
+                dirs[i][length] = '\0';
+                i++;
+                start = c+1;
+            }
+        }
+        if (start <= (int)strlen(env_path))
+        {
+            dirs[i] = ft_strdup(env_path+start);
+            i++;
+        }
+        dirs[i] = NULL;
+    }
+
+    int i=0;
+    while (dirs[i])
+    {
+        char *tmp = ft_strjoin(dirs[i], "/");
+        char *full = ft_strjoin(tmp, cmd);
+        free(tmp);
+        if (stat(full, &st) == 0)
+        {
+            if (S_ISDIR(st.st_mode))
+            {
+                free(full);
+                int j=0;while(dirs[j]) free(dirs[j++]); free(dirs);
+                set_error_and_code(cmd, "Is a directory", 126);
+                return NULL;
+            }
+            if (access(full, X_OK) != 0)
+            {
+                free(full);
+                int j=0;while(dirs[j]) free(dirs[j++]); free(dirs);
+                set_error_and_code(cmd, "Permission denied", 126);
+                return NULL;
+            }
+            int j=0;while(dirs[j]) free(dirs[j++]); free(dirs);
+            return full;
+        }
+        free(full);
+        i++;
+    }
+    int j=0;while(dirs[j]) free(dirs[j++]); free(dirs);
+    set_error_and_code(cmd, "command not found", 127);
+    return NULL;
 }

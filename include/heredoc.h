@@ -14,8 +14,14 @@
 # define HEREDOC_H
 
 # include "command.h"
+# include "env.h"
+
+typedef struct s_expand_context {
+    t_env *env;
+    int last_exit_code;
+} t_expand_context;
 
 // Traite tous les heredocs du pipeline et remplace heredoc_delim par un infile pipe
-int process_heredocs(t_command *cmds);
+int process_heredocs(t_command *cmds, t_env *env, int last_exit_code);
 
 #endif

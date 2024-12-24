@@ -10,281 +10,365 @@
 /*                                                                            */
 /* ************************************************************************** */
 
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include "../include/parser.h"
 #include "../include/utils.h"
 
-int  is_next_quoted(char *line)
-{
-    int i;
-    int dbl;
+#define TOKEN_UNQUOTED 'U'
+#define TOKEN_SINGLE_QUOTE 'S'
+#define TOKEN_DOUBLE_QUOTE 'D'
 
-    dbl = 0;
-    i = 0;
-    if (line[i] == 34)
-    {
-       dbl = 1;
-    }
-    while (line[++i])
-    {
-        if (dbl && line[i] == 39)
-            return (0);
-        else if (!dbl && line[i] == 34)
-            return (0);
-        else if (dbl && line[i] == 34)
-            return (i);
-        else if (!dbl && line[i] == 39)
-            return (i);
-    }
-    return (0);
+static int	is_whitespace(char c)
+{
+	return (c == ' ' || c == '\t' || c == '\n');
 }
 
-int	is_quoted(char c)
+static int	is_special_char(char c)
 {
-	if (c == 39 || c == 34)
+	return (c == '|' || c == '<' || c == '>');
+}
+
+static void	add_space_if_needed(char *new_line, size_t *j)
+{
+	if (*j > 0 && new_line[*j - 1] != ' ')
+	{
+		new_line[*j] = ' ';
+		(*j)++;
+	}
+}
+
+static void	add_special_char(char *new_line, char c, size_t *j)
+{
+	new_line[*j] = c;
+	(*j)++;
+}
+
+static int	is_double_operator(const char *line, size_t i)
+{
+	if ((line[i] == '<' && line[i + 1] == '<')
+		|| (line[i] == '>' && line[i + 1] == '>'))
+	{
 		return (1);
+	}
 	return (0);
 }
 
-int	is_well_quoted(char	*line)
+static void	hand_t_s(const char *line, char *new_line, size_t i, size_t *j)
 {
-	int	i;
-	int	quote;
-
-    i = 0;
-	while (line[i])
+	if (line[i + 1] && line[i + 1] != ' ')
 	{
-		if (is_quoted(line[i]))
-		{
-			quote = is_next_quoted(&line[i]);
-			if (quote)
-				i += quote;
-			else
-				return (0);
-		}
-        i++;
+		new_line[*j] = ' ';
+		(*j)++;
 	}
-    return (1);
 }
 
-
-static int is_sep(char c)
+static size_t	h_spe_char(const char *l, char *n_l, size_t i, size_t *j)
 {
-    return (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v');
-}
+	char	c;
+	int		double_op;
 
-static size_t count_words(const char *line)
-{
-	size_t count;
-	size_t i;
-	int in_word;
-
-	count = 0;
-	i = 0;
-	in_word = 0;
-	while (line[i])
+	c = l[i];
+	double_op = is_double_operator(l, i);
+	add_space_if_needed(n_l, j);
+	add_special_char(n_l, c, j);
+	if (double_op)
 	{
-		if (!is_sep(line[i]) && in_word == 0)
-		{
-			in_word = 1;
-			count++;
-		}
-		else if (!is_sep(line[i]) && !is_sep(line[i + 1]) && in_word == 1 && line[i] == '|')
-			count+= 2;
-		else if (is_sep(line[i]))
-			in_word = 0;
 		i++;
+		add_special_char(n_l, c, j);
 	}
-	return (count);
+	hand_t_s(l, n_l, i, j);
+	return (i);
 }
 
-// Libere tableau de tokens si une erreur survient
-static void free_tokens_array(char **tokens, size_t t)
+static void	update_quote_states(char c, int *in_sq, int *in_dq)
 {
-    size_t i;
-
-	i = 0;
-    if (!tokens)
-        return;
-    while (i < t)
+	if (c == '\'' && *in_dq == 0)
 	{
-        free(tokens[i]);
-		i++;
+		*in_sq = !*in_sq;
 	}
-    free(tokens);
+	else if (c == '"' && *in_sq == 0)
+	{
+		*in_dq = !*in_dq;
+	}
 }
 
-static char *copy_word(const char *line, size_t start, size_t end)
+static int	handle_char(const char *line, char *new_line, size_t i, size_t *j)
 {
-    size_t len;
-	len = end - start;
-    char *word = malloc(sizeof(char) * (len + 1));
-    if (!word)
-        return (NULL);
-    ft_memcpy(word, line + start, len);
-    word[len] = '\0';
-    return (word);
+	if (is_special_char(line[i]))
+	{
+		return (h_spe_char(line, new_line, i, j));
+	}
+	new_line[*j] = line[i];
+	(*j)++;
+	return (i);
 }
 
-char **ft_split_line(char *line)
+static char	*allocate_new_line(size_t len)
 {
-	char    **tokens;
-	char	*clean_line;
-	size_t  word_count;
-	size_t  i;
-	size_t  start;
-	size_t  t; // index pour tokens
-	int     in_word;
+	char	*new_line;
 
-	i = 0;
-	start = 0;
-	t = 0;
-	in_word = 0;
-	if (!line)
+	new_line = malloc(len * 4 + 1);
+	if (new_line == NULL)
+	{
 		return (NULL);
-	if (!is_well_quoted(line))
-		return (NULL);
-	clean_line = get_spaces(line);
-	word_count = count_words(clean_line);
-	tokens = (char **)malloc((word_count + 1) * sizeof(char *));
-	if (!tokens)
-		return (free(clean_line), NULL);
-	while (clean_line[i])
+	}
+	return (new_line);
+}
+
+static void	preprocess_loop(const char *line, char *new_line, size_t len)
+{
+	int		in_single_quote;
+	int		in_double_quote;
+	size_t	i;
+	size_t	j;
+
+	in_single_quote = 0;
+	in_double_quote = 0;
+	i = 0;
+	j = 0;
+	while (i < len)
 	{
-		if (!is_sep(clean_line[i]) && in_word == 0)
+		update_quote_states(line[i], &in_single_quote, &in_double_quote);
+		if (!in_single_quote && !in_double_quote)
+			i = handle_char(line, new_line, i, &j);
+		else
 		{
-			in_word = 1;
-			start = i;
-		}
-		else if ((is_sep(clean_line[i]) || clean_line[i] == '|') && in_word == 1)
-		{
-			tokens[t] = copy_word(clean_line, start, i);
-			if (!tokens[t])
-			{
-				free_tokens_array(tokens, t);
-				return (free(clean_line), NULL);
-			}
-			t++;
-			in_word = 0;
-		}
-		if (clean_line[i] == '|' && !is_sep(clean_line[i + 1]))
-		{
-			tokens[t] = copy_word(clean_line, i, i + 1);
-			if (!tokens[t])
-			{
-				free_tokens_array(tokens, t);
-				return (free(clean_line), NULL);
-			}
-			t++;
+			new_line[j] = line[i];
+			j++;
 		}
 		i++;
 	}
-	// Si chaine ne finit pas par un separateur il reste un mot a copier
-	if (in_word == 1)
+	new_line[j] = '\0';
+}
+
+char	*preprocess_line(const char *line)
+{
+	size_t	len;
+	char	*new_line;
+
+	len = ft_strlen(line);
+	new_line = allocate_new_line(len);
+	if (new_line == NULL)
+		return (NULL);
+	preprocess_loop(line, new_line, len);
+	return (new_line);
+}
+
+static void	skip_spaces(const char **line)
+{
+	while (**line == ' ' || **line == '\t' || **line == '\n'
+		|| **line == '\r' || **line == '\v' || **line == '\f')
+		(*line)++;
+}
+
+static char	*allocate_initial_token(size_t capacity)
+{
+	char	*token;
+
+	token = malloc(capacity + 1);
+	if (token == NULL)
+		return (NULL);
+	token[0] = TOKEN_UNQUOTED;
+	return (token);
+}
+
+static char	*resize_token(char *token, size_t *capacity)
+{
+	char	*new_token;
+
+	*capacity *= 2;
+	new_token = ft_realloc(token, *capacity + 1);
+	if (new_token == NULL)
 	{
-		tokens[t] = copy_word(clean_line, start, i);
-		if (!tokens[t])
-		{
-			free_tokens_array(tokens, t);
-			return (free(clean_line), NULL);
-		}
-		t++;
+		free(token);
+		return (NULL);
 	}
-	tokens[t] = NULL;
-	free(clean_line);
+	return (new_token);
+}
+
+static int	handle_quotes(char c, t_parser_context *ctx)
+{
+	if (c == '\'' && !ctx->in_double_quote)
+	{
+		if (ctx->in_single_quote)
+			ctx->in_single_quote = 0;
+		else
+		{
+			ctx->in_single_quote = 1;
+			ctx->token[0] = TOKEN_SINGLE_QUOTE;
+		}
+		*(ctx->line_ptr) += 1;
+		return (1);
+	}
+	if (c == '"' && !ctx->in_single_quote)
+	{
+		if (ctx->in_double_quote)
+			ctx->in_double_quote = 0;
+		else
+		{
+			ctx->in_double_quote = 1;
+			ctx->token[0] = TOKEN_DOUBLE_QUOTE;
+		}
+		*(ctx->line_ptr) += 1;
+		return (1);
+	}
+	return (0);
+}
+
+static char	*pl(t_parser_context *ctx)
+{
+	char	c;
+	char	*resized;
+
+	while (**ctx->line_ptr != '\0')
+	{
+		c = **ctx->line_ptr;
+		if (!ctx->in_single_quote && !ctx->in_double_quote && is_whitespace(c))
+			break ;
+		if (handle_quotes(c, ctx))
+			continue ;
+		if (ctx->length + 1 >= ctx->capacity)
+		{
+			resized = resize_token(ctx->token, &ctx->capacity);
+			if (resized == NULL)
+				return (NULL);
+			ctx->token = resized;
+		}
+		ctx->token[ctx->length] = c;
+		ctx->length++;
+		*(ctx->line_ptr) += 1;
+	}
+	ctx->token[ctx->length] = '\0';
+	return (ctx->token);
+}
+
+static char	*get_next_token(const char **line)
+{
+	t_parser_context	ctx;
+
+	ctx.line_ptr = line;
+	ctx.in_single_quote = 0;
+	ctx.in_double_quote = 0;
+	ctx.capacity = 128;
+	ctx.length = 1;
+	ctx.token = allocate_initial_token(ctx.capacity);
+	if (ctx.token == NULL)
+		return (NULL);
+	if (pl(&ctx) == NULL)
+	{
+		free(ctx.token);
+		return (NULL);
+	}
+	return (ctx.token);
+}
+
+static char	**cleanup_tokens(char **tokens, size_t count)
+{
+	size_t	i;
+
+	i = 0;
+	while (i < count)
+	{
+		free(tokens[i]);
+		i++;
+	}
+	free(tokens);
+	return (NULL);
+}
+
+static int	add_token(char ***tokens, size_t *count, char *token)
+{
+	char	**new_tokens;
+
+	new_tokens = ft_realloc(*tokens, sizeof(char *) * (*count + 2));
+	if (!new_tokens)
+	{
+		free(token);
+		return (0);
+	}
+	*tokens = new_tokens;
+	(*tokens)[*count] = token;
+	(*count)++;
+	(*tokens)[*count] = NULL;
+	return (1);
+}
+
+static char	**process_tokens(const char *ptr, char **tokens, size_t count)
+{
+	char	*token;
+
+	while (*ptr)
+	{
+		token = get_next_token(&ptr);
+		if (!token)
+			return (cleanup_tokens(tokens, count));
+		if (!add_token(&tokens, &count, token))
+			return (cleanup_tokens(tokens, count));
+		skip_spaces(&ptr);
+	}
 	return (tokens);
 }
 
-int is_simple_quote(char *line)
+char	**ft_split_line(char *line)
 {
-	int	i;
-	
+	char		*preprocessed;
+	const char	*ptr;
+	char		**tokens;
+
+	if (!line)
+		return (NULL);
+	preprocessed = preprocess_line(line);
+	if (!preprocessed)
+		return (NULL);
+	ptr = preprocessed;
+	tokens = NULL;
+	skip_spaces(&ptr);
+	tokens = process_tokens(ptr, tokens, 0);
+	free(preprocessed);
+	return (tokens);
+}
+
+int	is_simple_quote(const char *str)
+{
+	if (!str)
+		return (0);
+	return (str[0] == TOKEN_SINGLE_QUOTE);
+}
+
+int	is_double_quote(const char *str)
+{
+	if (!str)
+		return (0);
+	return (str[0] == TOKEN_DOUBLE_QUOTE);
+}
+
+char	*delete_quote(char *line)
+{
+	size_t	len;
+	char	*final;
+	size_t	i;
+
+	if (!line)
+		return (NULL);
+	len = ft_strlen(line);
+	if (len < 2)
+	{
+		free(line);
+		return (ft_strdup(""));
+	}
+	final = malloc(sizeof(char) * (len));
+	if (!final)
+		return (free(line), NULL);
 	i = 0;
-	while (line[i])
+	while (i < len - 1)
+	{
+		final[i] = line[i + 1];
 		i++;
-	i--;
-	if (line[i] == 39 && line[0] == 39)
-		return (1);
-	return (0);
+	}
+	final[len - 1] = '\0';
+	free(line);
+	return (final);
 }
-
-int is_double_quote(char *line)
-{
-	int	i;
-	
-	i = 0;
-	while (line[i])
-		i++;
-	i--;
-	if (line[i] == 34 && line[0] == 34)
-		return (1);
-	return (0);
-}
-
-char    *delete_quote(char *line)
-{
-    char   *final;
-    size_t  len;
-    size_t  i;
-
-    len = ft_strlen(line);
-    final = malloc(sizeof(char) * (--len));
-    if (!final)
-        return (free(line), NULL);
-    i = 0;
-    while (i < len - 1)
-    {
-        final[i] = line[i + 1];
-        i++;
-    }
-    final[i] = '\0';
-    free(line);
-    return (final);
-}
-
-// size_t	is_quoted(char c)
-// {
-// 	if (c == 39 || c == 34)
-// 		return (1);
-// 	return (0);
-// }
-
-// size_t	is_well_quoted(char	*line)
-// {
-// 	size_t	i;
-// 	size_t	quote;
-
-// 	while (line[i])
-// 	{
-// 		if (is_quote(line[i]))
-// 		{
-// 			quote = is_next_quoted(line[i]);
-// 			if (quote)
-// 				i += quote;
-// 			else
-// 				return (0);
-// 		}
-// 	}
-// }
-
-// char    **parsing(const char **tokens, t_env *env)
-// {
-// 	int     i;
-
-// 	i = 0;
-// 	while (tokens[i])
-// 	{
-// 		if (is_simple_quote(tokens[i]))
-//             tokens[i] = delete_quote(tokens[i]);
-//         else
-//         {
-//             else if (is_double_quote(tokens[i]))
-//                 tokens[i] = delete_quote(tokens[i]);
-//             tokens[i] = expand_token(tokens[i], env, 0);
-//         }
-//         i++;
-// 	}
-// 	return (tokens);
-// }
