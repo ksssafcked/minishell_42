@@ -6,7 +6,7 @@
 /*   By: lsaiti <lsaiti@student.42.fr>              +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/12/16 16:52:19 by lsaiti            #+#    #+#             */
-/*   Updated: 2024/12/24 15:57:34 by lsaiti           ###   ########.fr       */
+/*   Updated: 2024/12/24 18:36:50 by lsaiti           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -14,11 +14,6 @@
 # define BUILT_IN_H
 
 # include "env.h"
-#include <dirent.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 
 typedef struct s_shell
 {
@@ -33,6 +28,5 @@ void		export_cmd(t_shell *shell, t_env *env, char **args);
 t_env		*unset_cmd(t_env *env, char **args);
 int			run_builtin(t_shell *shell, char **args);
 int			exit_cmd(char **args, int last_exit_code, t_env *env);
-size_t		has_value(char *str);
 
 #endif

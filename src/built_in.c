@@ -6,7 +6,7 @@
 /*   By: lsaiti <lsaiti@student.42.fr>              +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2024/12/16 16:52:12 by lsaiti            #+#    #+#             */
-/*   Updated: 2024/12/24 17:48:15 by lsaiti           ###   ########.fr       */
+/*   Updated: 2024/12/24 18:34:05 by lsaiti           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -299,6 +299,7 @@ static void	set_env_var(t_env *env, const char *new_var)
 		{
 			free(cur->var);
 			cur->var = ft_strdup(new_var);
+			cur->printable = 1;
 			return ;
 		}
 		cur = cur->next;
@@ -380,12 +381,6 @@ void	export_cmd(t_shell *shell, t_env *env, char **args)
 	}
 	shell->last_exit_code = exit_code;
 }
-
-static t_env	*remove_env_var(t_env *prev, const char *var_name)
-{
-	
-}
-
 
 static t_env	*remove_env_var(t_env *env, const char *var_name)
 {
